@@ -1,4 +1,5 @@
-use pgs_rs::parse_pgs;
+use pgs_rs::parse::parse_pgs;
+use pgs_rs::render::DisplaySetIterator;
 use std::env;
 use std::fs;
 use std::process;
@@ -20,7 +21,7 @@ fn main() {
     };
 
     match parse_pgs(&mut data) {
-        Ok(pgs) => println!("{:#?}", pgs),
+        Ok(pgs) => DisplaySetIterator::new(&pgs).for_each(|ds| println!("{:#?}", ds)),
         Err(e) => {
             eprintln!("Failed to parse PGS data: {:?}", e.offset());
             // eprintln!("Failed to parse PGS data: {:?}", e);
