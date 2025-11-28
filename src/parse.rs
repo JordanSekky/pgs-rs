@@ -4,8 +4,9 @@ use struple::Struple;
 use winnow::Result as PResult;
 use winnow::binary::{be_u8, be_u16, be_u24, be_u32, length_and_then, length_repeat};
 use winnow::combinator::{alt, dispatch, fail, repeat};
-use winnow::error::{ContextError, ParseError};
 use winnow::prelude::*;
+
+use crate::error::PgsResult;
 
 #[derive(Debug, PartialEq, Eq, Struple)]
 pub struct Pgs {
@@ -120,7 +121,7 @@ pub struct CropInfo {
     pub height: u16,
 }
 
-pub fn parse_pgs<'a>(input: &'a mut [u8]) -> Result<Pgs, ParseError<&'a [u8], ContextError>> {
+pub fn parse_pgs<'a>(input: &'a mut [u8]) -> PgsResult<Pgs> {
     let segments = repeat(1.., parse_segment).parse(input)?;
     Ok(Pgs { segments })
 }

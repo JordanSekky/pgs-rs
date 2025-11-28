@@ -1,4 +1,5 @@
 use thiserror::Error;
+use winnow::error::{ContextError, ParseError};
 
 pub type PgsResult<T> = Result<T, PgsError>;
 
@@ -16,4 +17,12 @@ pub enum PgsError {
     },
     #[error("YUV error: {0}")]
     YuvError(#[from] yuv::YuvError),
+    #[error("Failed to parse PGS data: {0}")]
+    ParseError(String),
+}
+
+impl<'a> From<ParseError<&'a [u8], ContextError>> for PgsError {
+    fn from(e: ParseError<&'a [u8], ContextError>) -> Self {
+        PgsError::ParseError(e.to_string())
+    }
 }
