@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 
-// use yuv::{YuvPackedImage, YuvPackedImageMut};
+use yuv::{YuvPackedImage, YuvRange, YuvStandardMatrix};
 
-use crate::parse::{
-    CompositionObject, CompositionState, ObjectDefinition, PaletteDefinition, Pgs, SegmentContents,
-    Window,
+use crate::{
+    error::{PgsError, PgsResult},
+    parse::{
+        CompositionObject, CompositionState, ObjectDefinition, PaletteDefinition, Pgs,
+        SegmentContents, Window,
+    },
 };
+
+const PIXEL_SIZE: usize = 4;
 
 // type MutableImage<'a> = YuvPackedImageMut<'a, u8>;
 // type Image<'a> = YuvPackedImage<'a, u8>;
@@ -25,6 +30,12 @@ pub struct DisplaySet<'a> {
     pub windows: HashMap<u8, &'a Window>,
     pub palettes: HashMap<u8, &'a PaletteDefinition>,
     pub objects: HashMap<u16, &'a ObjectDefinition>,
+}
+
+impl<'a> DisplaySet<'a> {
+    pub fn is_empty(&self) -> bool {
+        self.composition_objects.is_empty()
+    }
 }
 
 pub struct DisplaySetIterator<'a> {
@@ -125,4 +136,113 @@ impl<'a> Iterator for DisplaySetIterator<'a> {
 
 pub fn get_display_sets<'a>(pgs: &'a Pgs) -> impl Iterator<Item = DisplaySet<'a>> {
     return DisplaySetIterator::new(pgs);
+}
+
+pub fn render_display_set(display_set: &DisplaySet) -> PgsResult<Vec<u8>> {
+    let width = display_set.width as usize;
+    let height = display_set.height as usize;
+    let stride = width * PIXEL_SIZE;
+    let mut buf = vec![0u8; stride * height];
+
+    for composition_object in display_set.composition_objects {
+        let Some(object) = display_set.objects.get(&composition_object.id) else {
+            return Err(PgsError::ObjectNotFound {
+                object_id: composition_object.id,
+                display_set: format!("{:?}", display_set),
+            });
+        };
+        let x = composition_object.horizontal_position as usize;
+        let y = composition_object.vertical_position as usize;
+
+        let mut pixel_offset = (y * width + x) * PIXEL_SIZE;
+
+        for pixel in object.data.0.iter() {
+            let Some(pixel_color) = display_set
+                .palettes
+                // TODO: Is multiple palettes allowed?
+                .get(&0)
+                .and_then(|palette| palette.entries.get(&pixel.color))
+            else {
+                return Err(PgsError::PaletteNotFound {
+                    palette_id: 0,
+                    entry_id: pixel.color,
+                    display_set: format!("{:?}", display_set),
+                });
+            };
+            for _ in 0..pixel.count {
+                if !is_cropped(&pixel_offset, composition_object) {
+                    buf[pixel_offset] = pixel_color.alpha;
+                    buf[pixel_offset + 1] = pixel_color.luminance;
+                    buf[pixel_offset + 2] = pixel_color.color_difference_blue;
+                    buf[pixel_offset + 3] = pixel_color.color_difference_red;
+                }
+                move_one_pixel_forward(
+                    &mut pixel_offset,
+                    width,
+                    composition_object.horizontal_position as usize,
+                    object.width as usize,
+                );
+            }
+        }
+    }
+
+    let image = YuvPackedImage {
+        yuy: &buf,
+        yuy_stride: stride as u32,
+        width: display_set.width as u32,
+        height: display_set.height as u32,
+    };
+
+    image.check_constraints444()?;
+
+    let mut rgba = vec![0u8; stride * height];
+
+    yuv::ayuv_to_rgba(
+        &image,
+        &mut rgba,
+        stride as u32,
+        YuvRange::Full,
+        YuvStandardMatrix::Bt709,
+        false,
+    )?;
+
+    Ok(rgba)
+}
+
+fn is_cropped(pixel_offset: &usize, object: &CompositionObject) -> bool {
+    if let Some(cropped) = &object.cropped {
+        return is_cropped_1(
+            pixel_offset as &usize,
+            cropped.horizontal_position as usize,
+            cropped.vertical_position as usize,
+            cropped.width as usize,
+            cropped.height as usize,
+        );
+    }
+    false
+}
+
+fn is_cropped_1(
+    pixel_offset: &usize,
+    top_left_x: usize,
+    top_left_y: usize,
+    width: usize,
+    height: usize,
+) -> bool {
+    let x = (*pixel_offset / PIXEL_SIZE) % width;
+    let y = (*pixel_offset / PIXEL_SIZE) / width;
+    x < top_left_x || x >= top_left_x + width || y < top_left_y || y >= top_left_y + height
+}
+
+fn move_one_pixel_forward(
+    pixel_offset: &mut usize,
+    width: usize,
+    horizontal_position: usize,
+    object_width: usize,
+) {
+    *pixel_offset += PIXEL_SIZE;
+    let x = (*pixel_offset / PIXEL_SIZE) % width;
+    if x == (horizontal_position + object_width) {
+        *pixel_offset += (width - object_width) * PIXEL_SIZE
+    }
 }

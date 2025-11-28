@@ -68,7 +68,7 @@ pub enum LastInSequence {
     FirstAndLast,
 }
 #[derive(PartialEq, Eq)]
-pub struct RunLengthEncodedData(Vec<RlEncodedPixels>);
+pub struct RunLengthEncodedData(pub Vec<RlEncodedPixels>);
 
 impl std::fmt::Debug for RunLengthEncodedData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
