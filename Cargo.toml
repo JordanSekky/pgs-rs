@@ -2,12 +2,15 @@
 name = "pgs-rs"
 version = "0.1.0"
 edition = "2024"
+description = "A library for parsing and rendering PGS subtitles"
+license = "MIT"
+repository = "https://github.com/jordansekky/pgs-rs"
+keywords = ["pgs", "subtitles", "parsing", "rendering"]
+categories = ["multimedia::encoding", "parsing"]
 
 [dependencies]
-ctrlc = "3.5.1"
 image = "0.25.5"
 struple = "0.2.0"
-tempdir = "0.3.7"
 thiserror = "2.0.17"
 winnow = { version = "0.7.13", features = ["simd"] }
 yuv = "0.8.8"
