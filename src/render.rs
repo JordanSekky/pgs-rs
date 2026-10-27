@@ -5,8 +5,8 @@ use yuv::{YuvPackedImage, YuvRange, YuvStandardMatrix};
 use crate::{
     error::{PgsError, PgsResult},
     parse::{
-        CompositionObject, CompositionState, ObjectDefinition, PaletteDefinition, Pgs,
-        SegmentContents, Window,
+        CompositionObject, CompositionState, ObjectDefinition, PaletteDefinition, PaletteEntry,
+        Pgs, SegmentContents, Window,
     },
 };
 
@@ -143,6 +143,13 @@ pub fn render_display_set(display_set: &DisplaySet) -> PgsResult<Vec<u8>> {
     let height = display_set.height as usize;
     let stride = width * PIXEL_SIZE;
     let mut buf = vec![0u8; stride * height];
+    let empty_palette_entry = PaletteEntry {
+        id: display_set.palette_id,
+        alpha: 0,
+        luminance: 0,
+        color_difference_blue: 0,
+        color_difference_red: 0,
+    };
 
     for composition_object in display_set.composition_objects {
         let Some(object) = display_set.objects.get(&composition_object.id) else {
@@ -157,14 +164,19 @@ pub fn render_display_set(display_set: &DisplaySet) -> PgsResult<Vec<u8>> {
         let mut pixel_offset = (y * width + x) * PIXEL_SIZE;
 
         for pixel in object.data.0.iter() {
-            let Some(pixel_color) = display_set
-                .palettes
-                // TODO: Is multiple palettes allowed?
-                .get(&0)
-                .and_then(|palette| palette.entries.get(&pixel.color))
+            let Some(pixel_color) =
+                display_set
+                    .palettes
+                    .get(&display_set.palette_id)
+                    .map(|palette| {
+                        palette
+                            .entries
+                            .get(&pixel.color)
+                            .unwrap_or(&empty_palette_entry)
+                    })
             else {
                 return Err(PgsError::PaletteNotFound {
-                    palette_id: 0,
+                    palette_id: display_set.palette_id,
                     entry_id: pixel.color,
                     display_set: format!("{:?}", display_set),
                 });
